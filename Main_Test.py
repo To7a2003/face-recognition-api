@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 
 
+
 app = FastAPI()
 
 @app.post("/verify_all_images")
@@ -19,10 +20,9 @@ async def verify_all_images(
     test_image: UploadFile = File(...)
 ):
     try:
-        # تحميل الموديل داخل الفنكشن علشان ميتحملش طول ما السيرفر شغال
         model = tf.keras.models.load_model("Adv_face_recognition_cnn_model.h5")
 
-        def process_image(uploaded_file):
+        async def process_image(uploaded_file):
             image_bytes = await uploaded_file.read()
             image_np = np.frombuffer(image_bytes, np.uint8)
             img = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
@@ -35,12 +35,10 @@ async def verify_all_images(
             img = np.expand_dims(img, axis=0) / 255.0
             return model.predict(img, verbose=0)
 
-        # استخراج التمثيلات (Encodings)
         id_encoding = await process_image(id_image)
         reference_encoding = await process_image(reference_image)
         test_encoding = await process_image(test_image)
 
-        # المقارنة
         threshold = 0.7
         is_verified = any(
             np.linalg.norm(enc - test_encoding) < threshold
