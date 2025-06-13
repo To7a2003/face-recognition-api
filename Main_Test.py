@@ -35,7 +35,7 @@ async def verify_all_images(
             img = np.expand_dims(img, axis=0) / 255.0
             return model.predict(img, verbose=0)
 
-        id_encoding = await process_image(id_image)
+        id_encoding = await process_image(ID_image)
         reference_encoding = await process_image(reference_image)
         test_encoding = await process_image(test_image)
 
