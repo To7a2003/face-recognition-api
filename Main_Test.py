@@ -9,79 +9,49 @@ from tensorflow.keras.optimizers import Adam
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 
-
 app = FastAPI()
 
-# تحميل الموديل
-model = tf.keras.models.load_model("Final_face_recognition_cnn_model.h5")
-
-# المتغيرات لتخزين الترميزات (encoding) للـ ID والـ Reference
-id_encoding = None
-reference_encoding = None
-
-# رفع صورة ID
-# رفع صورة ID
-@app.post("/upload-id/")
-async def upload_id_image(ID_image: UploadFile = File(..., alias="ID_image")):
-    global id_encoding
-    id_img = await ID_image.read()
-    id_img = np.frombuffer(id_img, np.uint8)
-    id_img = cv2.imdecode(id_img, cv2.IMREAD_COLOR)
-
-    if id_img is None:
-        return JSONResponse(content={"message": "Failed to load ID image."}, status_code=400)
-
-    id_img = cv2.cvtColor(id_img, cv2.COLOR_BGR2RGB)
-    id_img = cv2.resize(id_img, (100, 100))
-    id_img = np.expand_dims(id_img, axis=0) / 255.0
-    id_encoding = model.predict(id_img, verbose=0)
-
-    return {"message": "ID image uploaded and encoding computed successfully"}
-# رفع صورة Reference
-@app.post("/upload-reference/")
-async def upload_reference_image(reference_image: UploadFile = File(..., alias="reference_image")):
-    global reference_encoding
-    ref_img = await reference_image.read()
-    ref_img = np.frombuffer(ref_img, np.uint8)
-    ref_img = cv2.imdecode(ref_img, cv2.IMREAD_COLOR)
-
-    if ref_img is None:
-        return JSONResponse(content={"message": "Failed to load reference image."}, status_code=400)
-
-    ref_img = cv2.cvtColor(ref_img, cv2.COLOR_BGR2RGB)
-    ref_img = cv2.resize(ref_img, (100, 100))
-    ref_img = np.expand_dims(ref_img, axis=0) / 255.0
-    reference_encoding = model.predict(ref_img, verbose=0)
-
-    return {"message": "Reference image uploaded and encoding computed successfully"}
-
-# التحقق من صورة الاختبار
 @app.post("/verify/")
-async def verify_image(test_image: UploadFile = File(..., alias="test_image")):
-    global id_encoding, reference_encoding
+async def verify_all_images(
+    ID_image: UploadFile = File(..., alias="ID_image"),
+    reference_image: UploadFile = File(..., alias="reference_image"),
+    test_image: UploadFile = File(..., alias="test_image")
+):
+    def preprocess(image_bytes):
+        img_np = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (100, 100))
+        img = np.expand_dims(img, axis=0) / 255.0
+        return img
 
-    if id_encoding is None or reference_encoding is None:
-        return JSONResponse(content={"message": "ID or reference image not uploaded."}, status_code=400)
+    # قراءة الصور ومعالجتها
+    id_bytes = await ID_image.read()
+    ref_bytes = await reference_image.read()
+    test_bytes = await test_image.read()
 
-    test_img = await test_image.read()
-    test_img = np.frombuffer(test_img, np.uint8)
-    test_img = cv2.imdecode(test_img, cv2.IMREAD_COLOR)
+    id_img = preprocess(id_bytes)
+    ref_img = preprocess(ref_bytes)
+    test_img = preprocess(test_bytes)
 
-    if test_img is None:
-        return JSONResponse(content={"message": "Failed to load test image."}, status_code=400)
+    if id_img is None or ref_img is None or test_img is None:
+        return JSONResponse(content={"message": "One or more images could not be loaded."}, status_code=400)
 
-    test_img = cv2.cvtColor(test_img, cv2.COLOR_BGR2RGB)
-    test_img = cv2.resize(test_img, (100, 100))
-    test_img = np.expand_dims(test_img, axis=0) / 255.0
+    # تحميل الموديل داخل الفانكشن فقط وقت الطلب
+    model = tf.keras.models.load_model("Adv_face_recognition_cnn_model.h5")
+
+    # استخراج التمثيل (encoding)
+    id_encoding = model.predict(id_img, verbose=0)
+    reference_encoding = model.predict(ref_img, verbose=0)
     test_encoding = model.predict(test_img, verbose=0)
 
+    # التحقق
     threshold = 0.7
-    is_verified = False
-
-    for ref_encoding in [id_encoding, reference_encoding]:
-        distance = np.linalg.norm(ref_encoding - test_encoding)
-        if distance < threshold:
-            is_verified = True
-            break
+    is_verified = any(
+        np.linalg.norm(enc - test_encoding) < threshold
+        for enc in [id_encoding, reference_encoding]
+    )
 
     return {"is_verified": is_verified}
