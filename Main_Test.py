@@ -9,49 +9,48 @@ from tensorflow.keras.optimizers import Adam
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 
+
 app = FastAPI()
 
-@app.post("/verify/")
+@app.post("/verify_all_images")
 async def verify_all_images(
-    ID_image: UploadFile = File(..., alias="ID_image"),
-    reference_image: UploadFile = File(..., alias="reference_image"),
-    test_image: UploadFile = File(..., alias="test_image")
+    id_image: UploadFile = File(...),
+    reference_image: UploadFile = File(...),
+    test_image: UploadFile = File(...)
 ):
-    def preprocess(image_bytes):
-        img_np = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
-        if img is None:
-            return None
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (100, 100))
-        img = np.expand_dims(img, axis=0) / 255.0
-        return img
+    try:
+        # تحميل الموديل داخل الفنكشن علشان ميتحملش طول ما السيرفر شغال
+        model = tf.keras.models.load_model("Adv_face_recognition_cnn_model.h5")
 
-    # قراءة الصور ومعالجتها
-    id_bytes = await ID_image.read()
-    ref_bytes = await reference_image.read()
-    test_bytes = await test_image.read()
+        def process_image(uploaded_file):
+            image_bytes = await uploaded_file.read()
+            image_np = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
 
-    id_img = preprocess(id_bytes)
-    ref_img = preprocess(ref_bytes)
-    test_img = preprocess(test_bytes)
+            if img is None:
+                raise ValueError("Failed to decode image.")
 
-    if id_img is None or ref_img is None or test_img is None:
-        return JSONResponse(content={"message": "One or more images could not be loaded."}, status_code=400)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (100, 100))
+            img = np.expand_dims(img, axis=0) / 255.0
+            return model.predict(img, verbose=0)
 
-    # تحميل الموديل داخل الفانكشن فقط وقت الطلب
-    model = tf.keras.models.load_model("Adv_face_recognition_cnn_model.h5")
+        # استخراج التمثيلات (Encodings)
+        id_encoding = await process_image(id_image)
+        reference_encoding = await process_image(reference_image)
+        test_encoding = await process_image(test_image)
 
-    # استخراج التمثيل (encoding)
-    id_encoding = model.predict(id_img, verbose=0)
-    reference_encoding = model.predict(ref_img, verbose=0)
-    test_encoding = model.predict(test_img, verbose=0)
+        # المقارنة
+        threshold = 0.7
+        is_verified = any(
+            np.linalg.norm(enc - test_encoding) < threshold
+            for enc in [id_encoding, reference_encoding]
+        )
 
-    # التحقق
-    threshold = 0.7
-    is_verified = any(
-        np.linalg.norm(enc - test_encoding) < threshold
-        for enc in [id_encoding, reference_encoding]
-    )
+        return {"is_verified": bool(is_verified)}
 
-    return {"is_verified": is_verified}
+    except Exception as e:
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
