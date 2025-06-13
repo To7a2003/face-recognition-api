@@ -15,7 +15,7 @@ app = FastAPI()
 
 @app.post("/verify_all_images")
 async def verify_all_images(
-    id_image: UploadFile = File(...),
+    ID_image: UploadFile = File(...),
     reference_image: UploadFile = File(...),
     test_image: UploadFile = File(...)
 ):
