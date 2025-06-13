@@ -20,7 +20,7 @@ async def verify_all_images(
     test_image: UploadFile = File(...)
 ):
     try:
-        model = tf.keras.models.load_model("Adv_face_recognition_cnn_model.h5")
+        model = tf.keras.models.load_model("Final_face_recognition_cnn_model.h5")
 
         async def process_image(uploaded_file):
             image_bytes = await uploaded_file.read()
