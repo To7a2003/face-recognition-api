@@ -1,6 +1,11 @@
 import cv2
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 
